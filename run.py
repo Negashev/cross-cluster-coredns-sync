@@ -95,12 +95,15 @@ class Component():
             self.dns_server = tmp_dns_server
             # fix domain with endswith(domain_suffix) and min len
             domain_suffix = None
+            endswith_domain_suffix = None
             if dns_resolver.search:
-                domain_suffix = min([element for element in dns_resolver.search if element.to_text().endswith(self.cccs_domain_suffix)], key=len)
-            if domain_suffix is not None:
-                self.domain_suffix = domain_suffix.to_text()
-            else:
-                print(f"Error: Domain not found")
+                endswith_domain_suffix = [element for element in dns_resolver.search if element.to_text().endswith(self.cccs_domain_suffix)]
+            if endswith_domain_suffix is not None:
+                domain_suffix = min(endswith_domain_suffix, key=len)
+                if domain_suffix is not None:
+                    self.domain_suffix = domain_suffix.to_text()
+                    return
+            print(f"Error: Domain not found")
 
     async def disconnected_cb(self):
         self.nats_status = False
