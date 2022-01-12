@@ -17,8 +17,10 @@ class Component():
         self.scheduler = AsyncIOScheduler(timezone="UTC")
         self.cccs_nats_url = os.getenv("CCCS_NATS_DSN", "nats://my-user:T0pS3cr3t@localhost:4222")
         self.cccs_nats_channel = os.getenv("CCCS_NATS_CHANNEL", "cross-cluster-coredns-sync")
+        self.cccs_domain_suffix = os.getenv("CCCS_DOMAIN_SUFFIX", ".local.") # cluster.local.
         self.nats_status = None
         self.dns_server = None
+        self.domain_suffix = None
 
     async def parse_log(self, request):
         # Set status for responce by nats connection
@@ -31,9 +33,12 @@ class Component():
         subject = msg.subject
         reply = msg.reply
         data = json.loads(msg.data.decode())
-        if "ip" not in data.keys():
+        data_keys = data.keys()
+        if "ip" not in data_keys or "domain" not in data_keys:
             return
         if data["ip"] == self.dns_server:
+            return
+        if data["domain"] == self.domain_suffix:
             return
         print(f"Received a message on '{subject} {reply}': {data}")
 
@@ -79,8 +84,8 @@ class Component():
 
     async def ping_dns(self):
         # Notify via NATS
-        if self.nats_status:
-            await self.nc.publish(self.cccs_nats_channel, json.dumps({"ip":self.dns_server}).encode())
+        if self.nats_status and self.dns_server and self.domain_suffix:
+            await self.nc.publish(self.cccs_nats_channel, json.dumps({"ip": self.dns_server, "domain": self.domain_suffix}).encode())
 
     async def get_dns(self):
         dns_resolver = dns.resolver.Resolver()
@@ -88,6 +93,11 @@ class Component():
         if self.dns_server != tmp_dns_server:
             print(f"Find DNS server {tmp_dns_server}, old {self.dns_server}")
             self.dns_server = tmp_dns_server
+            # fix domain with endswith(domain_suffix) and min len
+            if dns_resolver.search:
+                self.domain_suffix = min([element for element in dns_resolver.search if element.to_text().endswith(self.cccs_domain_suffix)], key=len)
+            else:
+                print(f"Error: Domain not found")
 
     async def disconnected_cb(self):
         self.nats_status = False
