@@ -69,9 +69,9 @@ class Component():
         app.router.add_get("/", self.parse_log)
 
         await runner.setup()
-        site = web.TCPSite(runner, "0.0.0.0", 80)
+        site = web.TCPSite(runner, "0.0.0.0", 8080)
 
-        print("Server listening at '0.0.0.0:80'")
+        print("Server listening at '0.0.0.0:8080'")
         await site.start()
         
         # wait forever
