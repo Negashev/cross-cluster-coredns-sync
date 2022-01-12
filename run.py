@@ -95,7 +95,7 @@ class Component():
             self.dns_server = tmp_dns_server
             # fix domain with endswith(domain_suffix) and min len
             if dns_resolver.search:
-                self.domain_suffix = min([element for element in dns_resolver.search if element.to_text().endswith(self.cccs_domain_suffix)], key=len)
+                self.domain_suffix = min([element for element in dns_resolver.search if element.to_text().endswith(self.cccs_domain_suffix)], key=len).to_text()
             else:
                 print(f"Error: Domain not found")
 
