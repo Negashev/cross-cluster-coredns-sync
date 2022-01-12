@@ -1,0 +1,5 @@
+nats-py
+kubernetes_asyncio
+apscheduler
+aiohttp
+dnspython
