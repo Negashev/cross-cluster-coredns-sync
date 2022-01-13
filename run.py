@@ -101,7 +101,7 @@ class Component():
             if endswith_domain_suffix:
                 domain_suffix = min(endswith_domain_suffix, key=len)
                 if domain_suffix is not None:
-                    self.domain_suffix = domain_suffix.to_text()
+                    self.domain_suffix = domain_suffix.to_text()[:-1]
                     return
             print(f"Error: Domain not found")
 
