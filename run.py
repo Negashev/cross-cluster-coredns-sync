@@ -89,7 +89,7 @@ class Component():
     async def update_cross_cluster_rows_in_k8s(self):
         async with ApiClient() as api:
             v1 = client.CoreV1Api(api)
-            configmap = await k8s_get_or_create_if_not_exist_config_map(v1)
+            configmap = await self.k8s_get_or_create_if_not_exist_config_map(v1)
             configmap.data = self.cross_cluster_rows
             await v1.replace_namespaced_config_map(name=configmap.metadata.name, namespace = configmap.metadata.namespace, body=configmap)
 
@@ -119,6 +119,8 @@ class Component():
         await self.ping_dns()
 
         await self.update_cross_cluster_rows()
+
+        await self.update_cross_cluster_rows_in_k8s()
 
         self.scheduler.add_job(self.ping_dns, "interval", seconds=10)
         self.scheduler.add_job(self.get_dns, "interval", seconds=60)
