@@ -1,6 +1,8 @@
 import os
 import json
 import asyncio
+import time
+import copy
 from datetime import datetime
 
 from aiohttp import web
@@ -21,6 +23,8 @@ class Component():
         self.nats_status = None
         self.dns_server = None
         self.domain_suffix = None
+        self.cross_cluster_rows = {}
+        self.tpm_cross_cluster_rows = {}
 
     async def parse_log(self, request):
         # Set status for responce by nats connection
@@ -40,7 +44,22 @@ class Component():
             return
         if data["domain"] == self.domain_suffix:
             return
-        print(f"Received a message on '{subject} {reply}': {data}")
+        if data["ip"] not in self.tpm_cross_cluster_rows.keys():
+            print(f'Find domain {data["domain"]} ({data["ip"]})')
+        # set time for truncate
+        data["time"] = time.time()
+        self.tpm_cross_cluster_rows[data["ip"]] = data
+
+
+    async def update_cross_cluster_rows(self):
+        tpm_cross_cluster_rows = copy.deepcopy(self.tpm_cross_cluster_rows)
+        for i in tpm_cross_cluster_rows:
+            # cleanup expired IPs
+            if tpm_cross_cluster_rows[i]["time"] < time.time() - 60:
+                print(f'Removing domain {tpm_cross_cluster_rows[i]["domain"]} ({tpm_cross_cluster_rows[i]["ip"]})')
+                del self.tpm_cross_cluster_rows[i]
+        self.cross_cluster_rows = copy.deepcopy(self.tpm_cross_cluster_rows)
+
 
     async def start(self):
         # NATS client
@@ -63,8 +82,11 @@ class Component():
         # first ping on server start
         await self.ping_dns()
 
+        await self.update_cross_cluster_rows()
+
         self.scheduler.add_job(self.ping_dns, "interval", seconds=10)
         self.scheduler.add_job(self.get_dns, "interval", seconds=60)
+        self.scheduler.add_job(self.update_cross_cluster_rows, "interval", seconds=24)
         self.scheduler.start()
         # Server
         app = web.Application()
@@ -76,7 +98,6 @@ class Component():
         await runner.setup()
         site = web.TCPSite(runner, "0.0.0.0", 8080)
 
-        print("Server listening at '0.0.0.0:8080'")
         await site.start()
         
         # wait forever
