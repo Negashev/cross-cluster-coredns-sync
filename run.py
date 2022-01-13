@@ -9,6 +9,8 @@ from aiohttp import web
 import nats
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 import dns.resolver
+from kubernetes_asyncio import client, config
+from kubernetes_asyncio.client.api_client import ApiClient
 
 class Component():
 
@@ -17,6 +19,8 @@ class Component():
         """
         self.nc = None
         self.scheduler = AsyncIOScheduler(timezone="UTC")
+        self.cccs_namespace = os.getenv("CCCS_NAMESPACE", "kube-system")
+        self.cccs_configmap = os.getenv("CCCS_CONFIGNAME", "cccs-coredns")
         self.cccs_nats_url = os.getenv("CCCS_NATS_DSN", "nats://my-user:T0pS3cr3t@localhost:4222")
         self.cccs_nats_channel = os.getenv("CCCS_NATS_CHANNEL", "cross-cluster-coredns-sync")
         self.cccs_domain_suffix = os.getenv("CCCS_DOMAIN_SUFFIX", ".local.") # cluster.local.
@@ -50,16 +54,44 @@ class Component():
         data["time"] = time.time()
         self.tpm_cross_cluster_rows[data["ip"]] = data
 
-
     async def update_cross_cluster_rows(self):
         tpm_cross_cluster_rows = copy.deepcopy(self.tpm_cross_cluster_rows)
+        cross_cluster_rows = {}
         for i in tpm_cross_cluster_rows:
             # cleanup expired IPs
             if tpm_cross_cluster_rows[i]["time"] < time.time() - 60:
                 print(f'Removing domain {tpm_cross_cluster_rows[i]["domain"]} ({tpm_cross_cluster_rows[i]["ip"]})')
                 del self.tpm_cross_cluster_rows[i]
-        self.cross_cluster_rows = copy.deepcopy(self.tpm_cross_cluster_rows)
+            cross_cluster_rows[f'{tpm_cross_cluster_rows[i]["domain"]}.server'] = """
+            {domain}:53 \{
+                forward . {ip}
+            \}
+            """.format(domain=tpm_cross_cluster_rows[i]["domain"], ip=tpm_cross_cluster_rows[i]["ip"])
+        self.cross_cluster_rows = copy.deepcopy(cross_cluster_rows)
 
+    async def k8s_get_or_create_if_not_exist_config_map(self, v1):
+        ret = await v1.list_namespaced_config_map(namespace=self.cccs_namespace)
+        for i in ret.items:
+            if i.metadata.name == self.cccs_configmap:
+                return i
+        return await v1.create_namespaced_config_map(
+            body={
+                "apiVersion": "v1",
+                "kind": "ConfigMap",
+                "metadata": {
+                    "name": self.cccs_configmap
+                },
+                "data": {}
+            }, 
+            namespace=self.cccs_namespace
+        )
+
+    async def update_cross_cluster_rows_in_k8s(self):
+        async with ApiClient() as api:
+            v1 = client.CoreV1Api(api)
+            configmap = await k8s_get_or_create_if_not_exist_config_map(v1)
+            configmap.data = self.cross_cluster_rows
+            await v1.replace_namespaced_config_map(name=configmap.metadata.name, namespace = configmap.metadata.namespace, body=configmap)
 
     async def start(self):
         # NATS client
@@ -78,6 +110,10 @@ class Component():
 
         await self.nc.subscribe(self.cccs_nats_channel, cb=self.message_handler)
 
+        await config.load_kube_config()
+        
+        print("Kubernetes Connected.")
+        
         await self.get_dns()
         # first ping on server start
         await self.ping_dns()
@@ -87,6 +123,7 @@ class Component():
         self.scheduler.add_job(self.ping_dns, "interval", seconds=10)
         self.scheduler.add_job(self.get_dns, "interval", seconds=60)
         self.scheduler.add_job(self.update_cross_cluster_rows, "interval", seconds=24)
+        self.scheduler.add_job(self.update_cross_cluster_rows_in_k8s, "interval", seconds=60)
         self.scheduler.start()
         # Server
         app = web.Application()
