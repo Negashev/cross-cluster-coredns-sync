@@ -110,7 +110,7 @@ class Component():
 
         await self.nc.subscribe(self.cccs_nats_channel, cb=self.message_handler)
 
-        await config.load_incluster_config()
+        config.load_incluster_config()
         
         print("Kubernetes Connected.")
         
