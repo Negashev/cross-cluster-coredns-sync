@@ -120,8 +120,6 @@ class Component():
 
         await self.update_cross_cluster_rows()
 
-        await self.update_cross_cluster_rows_in_k8s()
-
         self.scheduler.add_job(self.ping_dns, "interval", seconds=10)
         self.scheduler.add_job(self.get_dns, "interval", seconds=60)
         self.scheduler.add_job(self.update_cross_cluster_rows, "interval", seconds=24)
