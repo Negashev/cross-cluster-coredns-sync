@@ -63,11 +63,10 @@ class Component():
             if tpm_cross_cluster_rows[i]["time"] < time.time() - 60:
                 print(f'Removing domain {tpm_cross_cluster_rows[i]["domain"]} ({tpm_cross_cluster_rows[i]["ip"]})')
                 del self.tpm_cross_cluster_rows[i]
-            cross_cluster_rows[f'{tpm_cross_cluster_rows[i]["domain"]}.server'] = """
-            {domain}:53 \{
-                forward . {ip}
-            \}
-            """.format(domain=tpm_cross_cluster_rows[i]["domain"], ip=tpm_cross_cluster_rows[i]["ip"])
+            tmp_dns = "{domain}:53 \{\n".format(domain=tpm_cross_cluster_rows[i]["domain"]) 
+            tmp_dns =+ "    forward . {ip}\n".format(ip=tpm_cross_cluster_rows[i]["ip"])
+            tmp_dns =+ "\}\n"
+            cross_cluster_rows[f'{tpm_cross_cluster_rows[i]["domain"]}.server'] = tmp_dns
         self.cross_cluster_rows = copy.deepcopy(cross_cluster_rows)
 
     async def k8s_get_or_create_if_not_exist_config_map(self, v1):
