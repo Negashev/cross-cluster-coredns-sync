@@ -21,6 +21,7 @@ class Component():
         self.scheduler = AsyncIOScheduler(timezone="UTC")
         self.cccs_namespace = os.getenv("CCCS_NAMESPACE", "kube-system")
         self.cccs_configmap = os.getenv("CCCS_CONFIGNAME", "cccs-coredns")
+        self.cccs_ignore_configmap_keys = os.getenv("CCCS_IGNORE_CONFIGMAP_KEYS", "").split(",")
         self.cccs_nats_url = os.getenv("CCCS_NATS_DSN", "nats://my-user:T0pS3cr3t@localhost:4222")
         self.cccs_nats_channel = os.getenv("CCCS_NATS_CHANNEL", "cross-cluster-coredns-sync")
         self.cccs_domain_suffix = os.getenv("CCCS_DOMAIN_SUFFIX", ".local.") # cluster.local.
@@ -90,7 +91,20 @@ class Component():
         async with ApiClient() as api:
             v1 = client.CoreV1Api(api)
             configmap = await self.k8s_get_or_create_if_not_exist_config_map(v1)
-            configmap.data = self.cross_cluster_rows
+            source_configmap = copy.deepcopy(configmap.data)
+            
+            for i in self.cccs_ignore_configmap_keys:
+                del configmap.data[i]
+
+            if configmap.data == self.cross_cluster_rows:
+                # if array eq nothing to do
+                return
+            else:
+                # update array
+                configmap.data = self.cross_cluster_rows
+            # restore ignore configmap keys
+            for i in self.cccs_ignore_configmap_keys:
+                configmap.data[i] = source_configmap[i]
             await v1.replace_namespaced_config_map(name=configmap.metadata.name, namespace = configmap.metadata.namespace, body=configmap)
 
     async def start(self):
