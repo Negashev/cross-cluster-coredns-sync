@@ -92,9 +92,9 @@ class Component():
             v1 = client.CoreV1Api(api)
             configmap = await self.k8s_get_or_create_if_not_exist_config_map(v1)
             source_configmap = copy.deepcopy(configmap.data)
-            
-            for i in self.cccs_ignore_configmap_keys:
-                del configmap.data[i]
+            if self.cccs_ignore_configmap_keys and configmap.data:
+                for i in self.cccs_ignore_configmap_keys:
+                    del configmap.data[i]
 
             if configmap.data == self.cross_cluster_rows:
                 # if array eq nothing to do
